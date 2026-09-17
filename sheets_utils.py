@@ -26,6 +26,7 @@ TABS = {
     "Tiebreakers": ["Timestamp", "Name", "Week", "Guess"],
     "Results": ["Week", "GameID", "Away", "Home", "Winner"],
     "TiebreakerActuals": ["Week", "ActualTotal"],
+    "Roster": ["Name"],
 }
 
 
@@ -43,7 +44,13 @@ def _spreadsheet():
     return gc.open_by_key(sheet_id)
 
 
+@st.cache_resource(show_spinner=False)
 def _get_or_create_tab(name):
+    # Cached as a resource (not just the data) because ss.worksheet(name)
+    # itself calls fetch_sheet_metadata() -- a full spreadsheet-metadata
+    # read -- every time it's invoked, on top of the actual data read.
+    # Without caching this too, every read/write was burning 2 API calls
+    # instead of 1, and doing it uncached regardless of read_tab's cache.
     ss = _spreadsheet()
     try:
         ws = ss.worksheet(name)
@@ -53,13 +60,12 @@ def _get_or_create_tab(name):
     return ws
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=45, show_spinner=False)
 def read_tab(name) -> pd.DataFrame:
-    # Cached for 20s: Streamlit reruns this whole script on every click, and
-    # without caching that means a fresh Google Sheets API call per tab per
-    # click -- which blows through the free 60-reads/minute quota almost
-    # immediately. Writes below call st.cache_data.clear() so a submission
-    # is reflected right away instead of waiting out the cache window.
+    # Cached for 45s and SHARED across every visitor hitting the app -- 18
+    # people loading a page in the same window still costs 1 API call, not
+    # 18. Writes below call st.cache_data.clear() so a submission is
+    # reflected right away instead of waiting out the cache window.
     ws = _get_or_create_tab(name)
     records = ws.get_all_records()
     df = pd.DataFrame(records)
@@ -159,6 +165,14 @@ def save_results(week: int, results: dict, games_by_id: dict, tiebreaker_actual)
     tb_ws.append_row(TABS["TiebreakerActuals"])
     if not tb_df.empty:
         tb_ws.append_rows(tb_df[TABS["TiebreakerActuals"]].values.tolist())
+
+
+def get_roster() -> list:
+    df = read_tab("Roster")
+    if df.empty:
+        return []
+    names = [n.strip() for n in df["Name"].tolist() if str(n).strip()]
+    return sorted(set(names))
 
 
 def clear_caches():

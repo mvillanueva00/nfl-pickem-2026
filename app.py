@@ -54,7 +54,20 @@ with tab_submit:
     st.subheader("Submit Your Picks")
     col1, col2 = st.columns([2, 1])
     with col1:
-        name = st.text_input("Your name (use the same spelling every week!)").strip()
+        roster = db.get_roster()
+        if roster:
+            options = roster + ["\u2795 Someone not on this list"]
+            selection = st.selectbox("Your name", options, index=None, placeholder="Choose your name")
+            if selection == "\u2795 Someone not on this list":
+                name = st.text_input("Type your name (ask the admin to add you to the Roster sheet)").strip()
+            else:
+                name = (selection or "").strip()
+        else:
+            st.info(
+                "No roster set up yet \u2014 add names to the **Roster** tab in the Google "
+                "Sheet to turn this into a dropdown. Typing works for now."
+            )
+            name = st.text_input("Your name (use the same spelling every week!)").strip()
     with col2:
         week = st.selectbox("Week", WEEK_NUMBERS, format_func=lambda w: f"Week {w}")
 
